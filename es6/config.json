@@ -1,0 +1,8 @@
+{
+    "config.inputFile":"tag-example.docx",
+    "config.outputFile":"output.docx",
+    "config.debug":true,
+    "first_name":"John",
+    "last_name":"Smith",
+    "age":62
+}
