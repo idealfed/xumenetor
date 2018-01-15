@@ -2,6 +2,7 @@
 
 const DocUtils = require("./doc-utils");
 
+
 const Docxtemplater = class Docxtemplater {
 	constructor() {
 		if (arguments.length > 0) {
