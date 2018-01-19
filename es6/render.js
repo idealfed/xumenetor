@@ -22,7 +22,7 @@ function moduleRender(part, options) {
 function render(options) {
 
 	//*****************local IJF Functions
-	function ijfQueryData(inAction,inContext,inDebug)
+	function ijfQueryData(inAction,options,inDebug)
 		{
 		   if(inDebug)
 		   {
@@ -35,27 +35,72 @@ function render(options) {
  			  var action = JSON.parse(tStr);
 
 			  var jql = action.jql;
+
+			  var varBindings = jql.split("$").reduce(function(inKeys, p){
+				  //must walk forward and end on ", ) or space
+				  var i=0;
+				  while(i<p.length) {
+					  if((p[i]=="\"") || (p[i]==" ") || (p[i]==")") || (p[i]=="'")) break;
+					  i++;
+				  }
+				  var key = p.substring(0,i);
+				  inKeys.push(key);
+				  return inKeys;
+			  },[]);
+			  varBindings=varBindings.slice(1);
+  			  varBindings.forEach(function(b)
+			  {
+				 var newVal = options.scopeManager.getValue(b);
+				 if(newVal) jql=jql.replace("$"+b,newVal);
+			  });
+
 			  var flds = action.fields;
+			  //need to translate fields to custom fields....
+				if(!ijf.jiraFields)
+						{
+							ijf.jiraFields = ijfUtils.getJiraFieldsSync();
+							ijf.jiraFieldsKeyed = [];
+							ijf.jiraFields.forEach(function(f)
+							{
+								ijf.jiraFieldsKeyed[f.name]=f;
+							});
+				}
+			  var translateFields = ijfUtils.translateJiraFieldsToIds(flds);
+
 			  var suffix = "";
-			  if(flds) suffix = "&fields=" + flds;
+			  if(flds) suffix = "&fields=" + translateFields;
 
 			   var aUrl = '/rest/api/2/search?jql='+jql + suffix;
 			   var rawList = ijfUtils.jiraApiSync('GET',aUrl, null);
 			   var newVals=[];
                rawList.issues.forEach(function(i){
 					var itemData={};
-					Object.keys(ijf.jiraMeta.fields).forEach(function(k)
+
+					if(i.fields)
 					{
-						if(i.fields.hasOwnProperty(k))
-						{
-							var f = i.fields[k];
-							var v = ijfUtils.handleJiraFieldType(ijf.jiraMeta.fields[k],f,true,true);
-							itemData[ijf.jiraMeta.fields[k].name]=v;
-						}
-					});
+						var fieldMap = ijfUtils.translateJiraFieldsToObjs(flds);
+						fieldMap.forEach(function(f){
+							if(ijf.jiraFieldsKeyed.hasOwnProperty(f.name))
+							{
+								var v = ijfUtils.handleJiraFieldType(ijf.jiraFieldsKeyed[f.name],i.fields[f.id],true,true);
+								itemData[action.path + "." + f.name]=v;
+							}
+							else
+							{
+								itemData[action.path + "." + f.id]= i.fields[f.id];
+							}
+						});
+				    }
+					itemData[action.path + "." + "key"]=i.key;
+					itemData[action.path + "." + "id"]=i.id;
+					itemData[action.path + "." + "self"]=i.self;
  	 			    newVals.push(itemData);
 			   });
-			   inContext[action.path] = newVals;
+			   if(action.snippet)
+			   {
+				   if(ijf.snippets.hasOwnProperty(action.snippet)) newVals = ijf.snippets[action.snippet](newVals);
+			   }
+			   options.scopeManager.scopeList[(options.scopeManager.scopeList.length-1)][action.path]=newVals;
 		}
 
 	function ijfLog(inMessage)
@@ -88,15 +133,7 @@ function render(options) {
 			if (value == null) {
 				value = options.nullGetter(part);
 			}
-			if(options.includeTags)
-			{
-				  //var cId = "5";
-	              //options.commentRanges.push({"commentId":cId,"commentText": part.value});
-  				  //return "Hello</w:t><w:commentRangeStart w:id=\""+cId+"\"/><w:t xml:space=\"preserve\">" + DocUtils.utf8ToWord(value) + "</w:t><w:commentRangeEnd w:id=\""+cId+"\"/><w:t xml:space=\"preserve\">World";
-			      //return "{" + part.value + "}" + DocUtils.utf8ToWord(value.replace("\n","<w:br/>")) + "{/" + part.value + "}";
-					return "{" + part.value + "}" + value.replace("\n","<w:br/>") + "{/" + part.value + "}";
-			}
-			else {
+
 				//special handling for altering data model and extending data dynamically
 				//syntax:
 				//{action:query, jql:"", fields:"", path:"pathtojsonlocationtosave", snippet:"snippet that alters data optionally"}
@@ -104,10 +141,10 @@ function render(options) {
 				var cleanWordChars = ijfUtils.replaceWordChars(part.value);
 				if(cleanWordChars.indexOf("\"action\":")>-1)
 				{
-					console.info("Processing action: " + part.value); //query is only real one now...
+					//console.info("Processing action: " + part.value); //query is only real one now...
 					try
 					{
-						ijfQueryData(cleanWordChars,options.tags);
+						ijfQueryData(cleanWordChars,options);
 				    }
 				    catch(e)
 				    {
@@ -119,10 +156,20 @@ function render(options) {
 				}
 				else
 				{
-						if(typeof(value)=="string") return value.replace("\n","<w:br/>");
-						else return value;
+					    if(value=="undefined")
+					    {
+							if(options.includeTags) return "NOVALUE-" + part.value + "-FORTAG";
+							return "";
+						}
+
+						if(typeof(value)=="string")
+						{
+							var cleanWordChars = ijfUtils.replaceWordChars(value);
+							return cleanWordChars.replace("\n","<w:br/>");
+						}
+					    return value;
 				}
-			}
+
 		}
 		if (part.type === "content" || part.type === "tag") {
 			return part.value;
