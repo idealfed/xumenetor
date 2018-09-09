@@ -123,13 +123,17 @@ function render(options) {
 	if (!options.scopeManager) {
 		options.scopeManager = ScopeManager.createBaseScopeManager(options);
 	}
-	var compArr =  options.compiled.map(function (part) {
+	var compArr = [];
+	options.compiled.forEach(function (part) {
 		const moduleRendered = moduleRender(part, options);
+		var value=null;
 		if (moduleRendered) {
-			return moduleRendered.value;
+			//return moduleRendered.value;
+			compArr.push(moduleRendered.value);
+			return;
 		}
 		if (part.type === "placeholder") {
-			let value = options.scopeManager.getValue(part.value);
+			value = options.scopeManager.getValue(part.value);
 			if (value == null) {
 				value = options.nullGetter(part);
 			}
@@ -150,29 +154,82 @@ function render(options) {
 				    {
 						//failed to update data
 						ijfLog("Failed inline word action: " + JSON.stringify(e));
-						return "Failed inline word action: " + JSON.stringify(e);
+						//return "Failed inline word action: " + JSON.stringify(e);
+						compArr.push("Failed inline word action: " + JSON.stringify(e));
+						return;
+
 					}
-					return "";
+					return;
 				}
 				else
 				{
+					    //special hanlding to manimpualte word XML
+						if(cleanWordChars.indexOf("\"key\":")>-1)
+						{
+							try
+							{
+								var tStr = "{" + cleanWordChars + "}";
+								var action = JSON.parse(tStr);
+								value = options.scopeManager.getValue(action.key);
+									if (value == null) {
+										value = options.nullGetter(part);
+								}
+								//need to manipulate the base word document.  syntax is:
+								//{"key":"val","tagName":"w:shd","attribute":"w:fill","value":"hexVal"}
+								for(var i=compArr.length-1;i>-1;i--)
+								{
+									//walk backards in compArray, look for value...
+									if(compArr[i].indexOf(action.tagName) > -1)
+									{
+										//look for attribute, and update it's value
+										var splitTagArr = compArr[i].split(action.tagName);
+										var splitAttArr = splitTagArr[splitTagArr.length-1].split(action.attribute);
+										if(splitAttArr.length>1)
+										{
+											//there is an attribute to deal with. it starts on second element.  split on " and replace values
+											var attValueArr = splitAttArr[1].split("\"");
+											attValueArr[1]=action.value;
+											splitAttArr[1] =  attValueArr.join("\"");
+											splitTagArr[splitTagArr.length-1] = splitAttArr.join(action.attribute);
+											compArr[i] = splitTagArr.join(action.tagName);
+										}
+										break;
+									}
+								}
+
+							}
+							catch(e)
+							{
+								ijfLog("Failed to update word xml: " + JSON.stringify(e));
+								return;
+							}
+						}
+
 					    if(value=="undefined")
 					    {
-							if(options.includeTags) return "NOVALUE-" + part.value + "-FORTAG";
-							return "";
+							if(options.includeTags)
+							{
+								compArr.push("NOVALUE-" + part.value + "-FORTAG");
+							}
+							return;
 						}
 
 						if(typeof(value)=="string")
 						{
 							var cleanWordChars = ijfUtils.replaceWordChars(value);
-							return cleanWordChars.replace("\n","<w:br/>");
+							//please change
+							compArr.push(cleanWordChars.replace(/\n/g,"<w:br/>"));
+							return;
 						}
-					    return value;
+					    //return value;
+					    compArr.push(value);
+					    return;
 				}
 
 		}
 		if (part.type === "content" || part.type === "tag") {
-			return part.value;
+			compArr.push(part.value);
+			return; // part.value;
 		}
 		throw new Error(`Unimplemented tag type "${part.type}"`);
 	});
