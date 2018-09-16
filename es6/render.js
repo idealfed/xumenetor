@@ -176,6 +176,7 @@ function render(options) {
 								}
 								//need to manipulate the base word document.  syntax is:
 								//{"key":"val","tagName":"w:shd","attribute":"w:fill","value":"hexVal"}
+								/*
 								for(var i=compArr.length-1;i>-1;i--)
 								{
 									//walk backards in compArray, look for value...
@@ -196,7 +197,37 @@ function render(options) {
 										break;
 									}
 								}
-
+								*/
+								//New approach...call snippet get array of tags to handle....
+								//“key”:”Waiver”,”snippet”:”getMyNewValue”}
+								//Expected return must be:	[{“tagName”:”w:shd”,”attribute”:”w:fill”,”value”:”#FFF”}]
+								if(ijf.snippets.hasOwnProperty(action.snippet))
+								{
+									var tagArray = ijf.snippets[action.snippet](value);
+									tagArray.forEach(function(t)
+									{
+										for(var i=compArr.length-1;i>-1;i--)
+										{
+											//walk backards in compArray, look for value...
+											if(compArr[i].indexOf(t.tagName) > -1)
+											{
+												//look for attribute, and update it's value
+												var splitTagArr = compArr[i].split(t.tagName);
+												var splitAttArr = splitTagArr[splitTagArr.length-1].split(t.attribute);
+												if(splitAttArr.length>1)
+												{
+													//there is an attribute to deal with. it starts on second element.  split on " and replace values
+													var attValueArr = splitAttArr[1].split("\"");
+													attValueArr[1]=t.value;
+													splitAttArr[1] =  attValueArr.join("\"");
+													splitTagArr[splitTagArr.length-1] = splitAttArr.join(t.attribute);
+													compArr[i] = splitTagArr.join(t.tagName);
+												}
+												break;
+											}
+										}
+									});
+								}
 							}
 							catch(e)
 							{
